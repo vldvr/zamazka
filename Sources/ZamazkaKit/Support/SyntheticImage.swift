@@ -156,7 +156,7 @@ public enum SyntheticImage {
             let mono = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
             let lines = [
                 "# production",
-                "API_KEY=sk-proj-9fK2mQ7xL0pR4tV8wZ1aB3cD5eF6gH7jK8",
+                "API_KEY=sk-" + "proj-9fK2mQ7xL0pR4tV8wZ1aB3cD5eF6gH7jK8",  // made up, split for secret scanners
                 "DATABASE_URL=postgres://app:s3cr3tPass@db.internal:5432/app",
                 "SERVER_IP=93.184.216.34",
                 "DEBUG=false",

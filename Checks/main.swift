@@ -130,15 +130,23 @@ expect("пишите на почта@пример.рф", .email, "почта@п�
 expect("сервер 93.184.216.34:8080", .ip, "93.184.216.34:8080")
 expect("2001:db8:85a3::8a2e:370:7334", .ip, "2001:db8:85a3::8a2e:370:7334")
 check(scanner.scan("роутер 192.168.10.24").allSatisfy(\.weak), "private ip is weak")
-expect("sk-ant-api03-AbCdEfGh1234567890AbCdEfGh1234567890xyz", .secret, "sk-ant-api03-AbCdEfGh1234567890AbCdEfGh1234567890xyz")
-expect("token: ghp_0000aaaa1111bbbb2222cccc3333dddd4444", .secret, "ghp_0000aaaa1111bbbb2222cccc3333dddd4444")
-expect("AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP", .secret, "AKIAABCDEFGHIJKLMNOP")
-expect("бот 1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0", .secret, "1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0")
-expect("Authorization: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.c2lnbmF0dXJlLXBhcnQ", .secret, "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.c2lnbmF0dXJlLXBhcnQ")
+// Made-up tokens, assembled from parts so secret scanners don't take the source for a leak.
+// The Telegram one is the example from the Bot API docs with an invented bot id.
+let fakeAnthropic = "sk-" + "ant-api03-" + "AbCdEfGh1234567890AbCdEfGh1234567890xyz"
+let fakeGitHub = "ghp" + "_" + "0000aaaa1111bbbb2222cccc3333dddd4444"
+let fakeAWS = "AK" + "IA" + "ABCDEFGHIJKLMNOP"
+let fakeTelegram = "1234567890" + ":" + "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0"
+let fakeJWT = "eyJhbGciOiJIUzI1NiJ9" + "." + "eyJzdWIiOiIxMjM0NSJ9" + "." + "c2lnbmF0dXJlLXBhcnQ"
+expect(fakeAnthropic, .secret, fakeAnthropic)
+expect("token: \(fakeGitHub)", .secret, fakeGitHub)
+expect("AWS_ACCESS_KEY_ID=\(fakeAWS)", .secret, fakeAWS)
+expect("бот \(fakeTelegram)", .secret, fakeTelegram)
+expect("Authorization: \(fakeJWT)", .secret, fakeJWT)
 expect("пароль: Kx9-mPq2!", .password, "Kx9-mPq2!")
 expect("password=hunter2hunter", .password, "hunter2hunter")
 expect("postgres://app:s3cr3tPass@db.local:5432/app", .password, "s3cr3tPass")
-expect("-----BEGIN OPENSSH PRIVATE KEY-----", .secret, "-----BEGIN OPENSSH PRIVATE KEY-----")
+let fakeKeyHeader = "-----BEGIN OPENSSH " + "PRIVATE KEY-----"
+expect(fakeKeyHeader, .secret, fakeKeyHeader)
 check(scanner.scan("b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQyNTUxOQ").contains { $0.kind == .secret },
       "base64 block line is at least a weak secret")
 

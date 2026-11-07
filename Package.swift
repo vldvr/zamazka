@@ -25,5 +25,11 @@ let package = Package(
             dependencies: ["ZamazkaKit"],
             path: "Checks"
         ),
+        // The promo video: `swift run zamazka-reel`. Not part of the app.
+        .executableTarget(
+            name: "zamazka-reel",
+            dependencies: ["ZamazkaKit"],
+            path: "Promo"
+        ),
     ]
 )
