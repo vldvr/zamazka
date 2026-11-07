@@ -104,6 +104,22 @@ public enum Validators {
         }
     }
 
+    /// Levenshtein distance between two short strings.
+    public static func editDistance(_ a: String, _ b: String) -> Int {
+        let x = Array(a), y = Array(b)
+        if x.isEmpty { return y.count }
+        if y.isEmpty { return x.count }
+        var prev = Array(0...y.count)
+        for i in 1...x.count {
+            var cur = [i] + Array(repeating: 0, count: y.count)
+            for j in 1...y.count {
+                cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] == y[j - 1] ? 0 : 1))
+            }
+            prev = cur
+        }
+        return prev[y.count]
+    }
+
     /// Bits of entropy per character. Random keys score above ~3.5, words and hashes of words lower.
     public static func entropy(_ s: String) -> Double {
         guard !s.isEmpty else { return 0 }

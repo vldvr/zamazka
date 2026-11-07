@@ -172,7 +172,7 @@ public struct TextScanner: Sendable {
         // A line ending in a colon is itself a caption, not a value.
         if !label.isEmpty, !line.trimmingCharacters(in: .whitespaces).hasSuffix(":") {
             let whole = NSRange(location: 0, length: ns.length)
-            for rule in Rx.labels where rule.pattern.firstMatch(label) != nil && rule.accepts(line) {
+            for rule in Rx.labels where rule.matches(label) && rule.accepts(line) {
                 add(rule.kind, whole, priority: 58)
                 break
             }
@@ -432,34 +432,65 @@ enum Rx {
     struct LabelRule {
         let kind: FindingKind
         let pattern: NSRegularExpression
+        /// Whole captions to compare fuzzily, for OCR that misreads small text
+        /// («Лата рожления» for «Дата рождения», «llочта» for «Почта»).
+        let keywords: [String]
         let accepts: (String) -> Bool
+
+        func matches(_ caption: String) -> Bool {
+            if pattern.firstMatch(caption) != nil { return true }
+            let cyr = Rx.captionKey(caption, cyrillic: true), lat = Rx.captionKey(caption, cyrillic: false)
+            guard !cyr.isEmpty, cyr.count <= 32 else { return false }
+            return keywords.contains { kw in
+                let allowed = kw.count >= 8 ? 2 : (kw.count >= 5 ? 1 : 0)
+                let key = kw.unicodeScalars.contains { (0x400...0x4FF).contains(Int($0.value)) } ? cyr : lat
+                return allowed > 0 && Validators.editDistance(key, kw) <= allowed
+            }
+        }
+    }
+
+    /// A caption reduced to lower-case letters and single spaces. With `cyrillic`, Latin
+    /// look-alikes become Cyrillic and «ll» becomes «п», the usual OCR confusions.
+    static func captionKey(_ s: String, cyrillic: Bool) -> String {
+        var t = s.lowercased()
+        if cyrillic {
+            t = t.replacingOccurrences(of: "ll", with: "п").replacingOccurrences(of: "ii", with: "п")
+            let map: [Character: Character] = ["a": "а", "e": "е", "o": "о", "p": "р", "c": "с", "x": "х", "y": "у",
+                                               "k": "к", "m": "м", "t": "т", "h": "н", "n": "п", "u": "и", "r": "г"]
+            t = String(t.map { map[$0] ?? $0 })
+        }
+        let letters = t.map { $0.isLetter ? $0 : " " }
+        return String(letters).split(separator: " ").joined(separator: " ")
     }
 
     /// Captions that name a whole field. Anchored at the end: «ФИО:», «Адрес доставки».
     static let labels: [LabelRule] = {
-        func rule(_ kind: FindingKind, _ words: String, _ accepts: @escaping (String) -> Bool) -> LabelRule {
-            LabelRule(kind: kind, pattern: make("(?:^|[\\s(])(?:" + words + ")\\s*[:\\-–]?\\s*$", [.caseInsensitive]), accepts: accepts)
+        func rule(_ kind: FindingKind, _ words: String, _ keywords: [String] = [], _ accepts: @escaping (String) -> Bool) -> LabelRule {
+            LabelRule(kind: kind, pattern: make("(?:^|[\\s(])(?:" + words + ")\\s*[:\\-–]?\\s*$", [.caseInsensitive]),
+                      keywords: keywords, accepts: accepts)
         }
         let digits = { (s: String, n: ClosedRange<Int>) in n.contains(Validators.digits(s).count) }
         return [
-            rule(.person, #"ФИО|Ф\.\s?И\.\s?О\.?|получатель|отправитель|владелец(?:\s+карты)?|держатель(?:\s+карты)?|плательщик|пассажир|покупатель|имя(?:\s+и\s+фамилия)?|фамилия(?:\s+имя(?:\s+отчество)?)?|full\s+name|name|cardholder"#) { v in
+            rule(.person, #"ФИО|Ф\.\s?И\.\s?О\.?|получатель|отправитель|владелец(?:\s+карты)?|держатель(?:\s+карты)?|плательщик|пассажир|покупатель|имя(?:\s+и\s+фамилия)?|фамилия(?:\s+имя(?:\s+отчество)?)?|full\s+name|name|cardholder"#,
+                 ["получатель", "отправитель", "владелец карты", "держатель карты", "плательщик", "пассажир", "покупатель", "фамилия", "имя и фамилия", "фамилия имя отчество"]) { v in
                 let words = v.split(whereSeparator: { $0 == " " || $0 == "\u{00A0}" })
                 return (2...4).contains(words.count) && v.count <= 60 && !v.contains(where: \.isNumber) && !v.contains(":")
                     && words.allSatisfy { $0.first?.isUppercase == true }
             },
-            rule(.birthdate, #"дата\s+рождения|д\.\s?р\.|date\s+of\s+birth|DOB|birth\s?date"#) { v in digits(v, 4...8) },
-            rule(.address, #"адрес(?:\s+\p{L}+){0,3}|address|куда|место\s+жительства|прописка|регистрация"#) { v in
+            rule(.birthdate, #"дата\s+рождения|д\.\s?р\.|date\s+of\s+birth|DOB|birth\s?date"#, ["дата рождения", "date of birth"]) { v in digits(v, 4...8) },
+            rule(.address, #"адрес(?:\s+\p{L}+){0,3}|address|куда|место\s+жительства|прописка|регистрация"#,
+                 ["адрес", "адрес доставки", "адрес регистрации", "адрес проживания", "адрес получателя", "место жительства", "прописка"]) { v in
                 v.count >= 5 && (v.contains(where: \.isNumber) || v.contains(","))
             },
-            rule(.phone, #"тел\.?|телефон|phone|мобильный|моб\.?|номер\s+телефона"#) { v in digits(v, 6...15) },
+            rule(.phone, #"тел\.?|телефон|phone|мобильный|моб\.?|номер\s+телефона"#, ["телефон", "мобильный", "номер телефона"]) { v in digits(v, 6...15) },
             // OCR sometimes breaks an address with a space or reads «@» oddly; the caption still says what it is.
-            rule(.email, #"почта|e-?mail|эл\.\s?почта|электронная\s+почта"#) { v in
+            rule(.email, #"почта|e-?mail|эл\.\s?почта|электронная\s+почта"#, ["почта", "эл почта", "электронная почта", "e mail", "email"]) { v in
                 v.count <= 80 && (v.contains("@") || v.range(of: #"^\S+\.\p{L}{2,}$"#, options: .regularExpression) != nil)
             },
-            rule(.passport, #"паспорт|серия\s+и\s+номер|passport(?:\s+no\.?)?"#) { v in digits(v, 6...12) },
-            rule(.order, #"номер\s+заказа|заказ|order(?:\s+(?:number|no\.?|id))?"#) { v in digits(v, 2...30) && v.count <= 30 },
-            rule(.track, #"трек[\s\-]?номер|трек|номер\s+отслеживания|tracking(?:\s+number)?|ШПИ"#) { v in digits(v, 6...30) },
-            rule(.password, #"пароль|password|pass|pwd"#) { v in (4...64).contains(v.count) },
+            rule(.passport, #"паспорт|серия\s+и\s+номер|passport(?:\s+no\.?)?"#, ["паспорт", "серия и номер", "passport"]) { v in digits(v, 6...12) },
+            rule(.order, #"номер\s+заказа|заказ|order(?:\s+(?:number|no\.?|id))?"#, ["номер заказа"]) { v in digits(v, 2...30) && v.count <= 30 },
+            rule(.track, #"трек[\s\-]?номер|трек|номер\s+отслеживания|tracking(?:\s+number)?|ШПИ"#, ["трек номер", "номер отслеживания"]) { v in digits(v, 6...30) },
+            rule(.password, #"пароль|password|pass|pwd"#, ["пароль", "password"]) { v in (4...64).contains(v.count) },
             rule(.secret, #"api[\s_\-]?key|token|токен|секрет|secret|ключ(?:\s+api)?"#) { v in v.count >= 8 },
         ]
     }()

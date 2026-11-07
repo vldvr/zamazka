@@ -160,6 +160,12 @@ check(scanner.scan("Петров Иван Сергеевич", label: "ФИО:")
 check(scanner.scan("01.02.1990", label: "Дата рождения:").map(\.kind) == [.birthdate], "field: date next to its caption")
 check(scanner.scan("Новый пользователь", label: "Статус:").isEmpty, "field: unrelated caption")
 check(scanner.scan("Добро пожаловать", label: "ФИО:").isEmpty, "field: lower-case words are not a name")
+// Captions as Vision on macOS 15 read them on CI (small Cyrillic text).
+check(scanner.scan("01.02.1990", label: "Лата рожления:").map(\.kind) == [.birthdate], "field: misread «Дата рождения» still works")
+check(scanner.scan("I.oetrovaexamole.ru", label: "llочт?:").map(\.kind) == [.email], "field: misread «Почта» and e-mail still work")
+check(scanner.scan("125009, Москва, Тверская улица, 7", label: "Апрес доставки:").map(\.kind) == [.address], "field: misread «Адрес доставки» still works")
+check(scanner.scan("Активен", label: "Статус:").isEmpty && scanner.scan("01.02.2026", label: "Создан:").isEmpty, "field: unrelated captions stay unrelated")
+check(Validators.editDistance("лата рожления", "дата рождения") == 2, "edit distance")
 
 // Wrapped over two lines (scanned as one paragraph).
 expect("кв. 12. Мой номер +7 (916) 123-45-67, звони после шести", .phone, "+7 (916) 123-45-67")
