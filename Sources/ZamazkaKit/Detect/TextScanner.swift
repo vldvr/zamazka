@@ -170,9 +170,10 @@ public struct TextScanner: Sendable {
 
         // A form field whose caption sits next to it: the whole value is the finding.
         // A line ending in a colon is itself a caption, not a value.
-        if !label.isEmpty, !line.trimmingCharacters(in: .whitespaces).hasSuffix(":") {
+        let value = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !label.isEmpty, !value.hasSuffix(":") {
             let whole = NSRange(location: 0, length: ns.length)
-            for rule in Rx.labels where rule.matches(label) && rule.accepts(line) {
+            for rule in Rx.labels where rule.matches(label) && rule.accepts(value) {
                 add(rule.kind, whole, priority: 58)
                 break
             }

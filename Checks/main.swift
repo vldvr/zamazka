@@ -163,6 +163,7 @@ check(scanner.scan("Добро пожаловать", label: "ФИО:").isEmpty,
 // Captions as Vision on macOS 15 read them on CI (small Cyrillic text).
 check(scanner.scan("01.02.1990", label: "Лата рожления:").map(\.kind) == [.birthdate], "field: misread «Дата рождения» still works")
 check(scanner.scan("I.oetrovaexamole.ru", label: "llочт?:").map(\.kind) == [.email], "field: misread «Почта» and e-mail still work")
+check(scanner.scan("I.oetrovaexamole.ru ", label: "llочт?: ").map(\.kind) == [.email], "field: trailing spaces from OCR do not matter")
 check(scanner.scan("125009, Москва, Тверская улица, 7", label: "Апрес доставки:").map(\.kind) == [.address], "field: misread «Адрес доставки» still works")
 check(scanner.scan("Активен", label: "Статус:").isEmpty && scanner.scan("01.02.2026", label: "Создан:").isEmpty, "field: unrelated captions stay unrelated")
 check(Validators.editDistance("лата рожления", "дата рождения") == 2, "edit distance")
@@ -258,8 +259,10 @@ if CommandLine.arguments.dropFirst().first != "text" {
     /// and this is the only way to see it on a CI machine.
     func diagnose(_ scene: String, _ a: Analysis, since before: Int) {
         guard failed.count > before else { return }
-        print("--- \(scene): what Vision read")
-        for l in a.lines { print("    | \(l)") }
+        print("--- \(scene): what Vision read (x,y w×h in pixels)")
+        for (l, box) in zip(a.lines, a.boxes) {
+            print("    | \(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))×\(Int(box.height))  \(l)")
+        }
         for f in a.findings { print("    = \(f.kind.rawValue)\(f.weak ? " (weak)" : ""): \(f.text ?? "")") }
     }
 

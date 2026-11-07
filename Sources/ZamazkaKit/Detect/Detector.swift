@@ -71,8 +71,9 @@ public struct DetectorOptions: Sendable {
 public struct Analysis: Sendable {
     public let size: CGSize
     public var findings: [Finding]
-    /// Recognised lines, for the debug CLI.
+    /// Recognised lines and their boxes, for the debug CLI and the checks' diagnostics.
     public let lines: [String]
+    public var boxes: [CGRect] = []
     public let seconds: Double
 }
 
@@ -222,8 +223,10 @@ public enum Detector {
             }
         }
 
-        return Analysis(size: size, findings: findings, lines: lines.map(\.text),
-                        seconds: Date().timeIntervalSince(started))
+        var analysis = Analysis(size: size, findings: findings, lines: lines.map(\.text),
+                                seconds: Date().timeIntervalSince(started))
+        analysis.boxes = lines.map(\.box)
+        return analysis
     }
 
     static func ocrLines(_ request: VNRecognizeTextRequest, crop: CGRect) -> [OCRLine] {
@@ -330,10 +333,16 @@ public enum Detector {
 
     /// `other` sits to the left of `line` on the same row, close enough to be its caption.
     static func isCaption(_ other: OCRLine, of line: OCRLine) -> Bool {
-        let b = line.box
-        guard other.box.maxX <= b.minX + 2, b.minX - other.box.maxX < b.height * 12 else { return false }
-        let overlap = min(other.box.maxY, b.maxY) - max(other.box.minY, b.minY)
-        return overlap > min(other.box.height, b.height) * 0.5
+        isLeft(other, of: line) && line.box.minX - other.box.maxX < line.box.height * 12
+    }
+
+    /// `other` is on the same row and to the left. Centres are compared rather than overlap, and
+    /// a little horizontal overlap is allowed: older Vision returns looser boxes, especially for
+    /// misread words.
+    static func isLeft(_ other: OCRLine, of line: OCRLine) -> Bool {
+        let a = other.box, b = line.box
+        guard a.minX < b.minX, a.maxX <= b.minX + b.height * 0.8 else { return false }
+        return abs(a.midY - b.midY) < max(a.height, b.height) * 0.6
     }
 
     struct Context {
@@ -356,9 +365,7 @@ public enum Detector {
         })
         ctx.above = above?.text ?? ""
         let left = lines.filter { other in
-            guard other.box.maxX <= b.minX + 2 else { return false }
-            let overlap = min(other.box.maxY, b.maxY) - max(other.box.minY, b.minY)
-            return overlap > min(other.box.height, b.height) * 0.5
+            !inBlock.contains(ObjectIdentifier(other.candidate)) && isLeft(other, of: block[0])
         }.sorted { $0.box.maxX < $1.box.maxX }
         ctx.left = left.map(\.text).joined(separator: " ")
         if let nearest = left.last, b.minX - nearest.box.maxX < b.height * 12 {
