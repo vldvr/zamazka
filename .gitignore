@@ -1,0 +1,8 @@
+.build/
+build/
+dist/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+# Research notes on other apps stay local.
+research/
