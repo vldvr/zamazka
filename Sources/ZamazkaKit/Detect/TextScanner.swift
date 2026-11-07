@@ -324,6 +324,7 @@ public struct TextScanner: Sendable {
             }
         }
         for m in Rx.street.matches(fixed) { out.append(extend(m.range)) }
+        for m in Rx.streetAfter.matches(fixed) { out.append(extend(m.range)) }
         return out
     }
 }
@@ -418,9 +419,15 @@ enum Rx {
     static let latinR = make(#"(^|[\s,(])r\.(?=\s?\p{Lu})"#)
     static let addressLabeled = make(#"(?:адрес(?:\s+(?:доставки|регистрации|проживания|получателя|пункта\s+выдачи))?|address|куда|место\s+жительства|по\s+адресу|прописк\p{L}*)\s*[:\-–]\s*(\S.{4,})$"#, [.caseInsensitive])
     static let streetWord = make(#"(?<!\p{L})(?:ул\.|улица|пр-т|пр-кт|просп\.|проспект|пер\.|переулок|ш\.|шоссе|б-р|бульвар|наб\.|набережная|пл\.|площадь|мкр\.?|микрорайон|проезд|тупик|аллея|тракт|д\.|дом|кв\.)"#, [.caseInsensitive])
-    static let street = make(#"(?<!\p{L})(?:(?:г\.|город|пос\.|пгт|с\.|дер\.)[\s\u00A0]*\p{Lu}[\p{L}\-]+,?[\s\u00A0]*)?(?:ул\.|улица|пр-т|пр-кт|просп\.|проспект|пер\.|переулок|ш\.|шоссе|б-р|бульвар|наб\.|набережная|пл\.|площадь|мкр\.|микрорайон|проезд|тупик|аллея|тракт)[\s\u00A0]*\p{L}[\p{L}0-9\-. \u00A0]{1,40}?,?[\s\u00A0]*(?:(?:д\.|дом)[\s\u00A0]*)?\d+[\p{L}]?(?:/\d+)?(?!\d)"#, [.caseInsensitive])
+    // Street word first: «ул. Баумана 15», «г. Москва, ул. Тверская, д. 7», «Казань, ул. Баумана 15».
+    static let street = make(#"(?<!\p{L})(?:\d{6},[\s\u00A0]*)?(?:(?:(?i:г\.|город|пос\.|пгт|с\.|дер\.)[\s\u00A0]*)?\p{Lu}[\p{L}\-]+,[\s\u00A0]*|(?i:г\.|город|пос\.|пгт|с\.|дер\.)[\s\u00A0]*\p{Lu}[\p{L}\-]+[\s\u00A0]+)?(?i:ул\.|улица|пр-т|пр-кт|просп\.|проспект|пер\.|переулок|ш\.|шоссе|б-р|бульвар|наб\.|набережная|пл\.|площадь|мкр\.|микрорайон|проезд|тупик|аллея|тракт)[\s\u00A0]*\p{L}[\p{L}0-9\-. \u00A0]{1,40}?,?[\s\u00A0]*(?:(?i:д\.|дом)[\s\u00A0]*)?\d+\p{L}?(?:/\d+)?(?!\d)"#)
+    // Name first: «Невский проспект 28», «125009, Москва, Тверская улица, 7».
+    static let streetAfter = make(#"(?<!\p{L})(?:\d{6},[\s\u00A0]*)?(?:(?:(?i:г\.|город)[\s\u00A0]*)?\p{Lu}[\p{L}\-]+,[\s\u00A0]*)?\p{Lu}[\p{L}\-]+(?:[\s\u00A0]+\p{L}[\p{L}\-]+)?[\s\u00A0]+(?i:улица|ул\.|проспект|пр-т|просп\.|переулок|пер\.|шоссе|ш\.|бульвар|б-р|набережная|наб\.|площадь|пл\.|проезд|тупик|аллея|тракт)\.?,?[\s\u00A0]*(?:(?i:д\.|дом)[\s\u00A0]*)?\d+\p{L}?(?:/\d+)?(?!\d)"#)
     static let addressTail = make(#",?[\s\u00A0]*(?:кв\.?|квартира|корп\.?|к\.|стр\.?|строение|подъезд|под\.|этаж|эт\.|офис|оф\.|д\.|дом)[\s\u00A0]*\d+[\p{L}]?"#, [.caseInsensitive])
-    static let addressDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.address.rawValue)
+    /// The system address detector knows Russian addresses on recent macOS only (not on 15).
+    /// ZAMAZKA_NO_DATADETECTOR=1 turns it off to check the own rules alone.
+    static let addressDetector: NSDataDetector? = ProcessInfo.processInfo.environment["ZAMAZKA_NO_DATADETECTOR"] == nil
+        ? try? NSDataDetector(types: NSTextCheckingResult.CheckingType.address.rawValue) : nil
 
     struct LabelRule {
         let kind: FindingKind
@@ -445,6 +452,10 @@ enum Rx {
                 v.count >= 5 && (v.contains(where: \.isNumber) || v.contains(","))
             },
             rule(.phone, #"тел\.?|телефон|phone|мобильный|моб\.?|номер\s+телефона"#) { v in digits(v, 6...15) },
+            // OCR sometimes breaks an address with a space or reads «@» oddly; the caption still says what it is.
+            rule(.email, #"почта|e-?mail|эл\.\s?почта|электронная\s+почта"#) { v in
+                v.count <= 80 && (v.contains("@") || v.range(of: #"^\S+\.\p{L}{2,}$"#, options: .regularExpression) != nil)
+            },
             rule(.passport, #"паспорт|серия\s+и\s+номер|passport(?:\s+no\.?)?"#) { v in digits(v, 6...12) },
             rule(.order, #"номер\s+заказа|заказ|order(?:\s+(?:number|no\.?|id))?"#) { v in digits(v, 2...30) && v.count <= 30 },
             rule(.track, #"трек[\s\-]?номер|трек|номер\s+отслеживания|tracking(?:\s+number)?|ШПИ"#) { v in digits(v, 6...30) },

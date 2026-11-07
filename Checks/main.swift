@@ -248,12 +248,22 @@ if CommandLine.arguments.dropFirst().first != "text" {
         try await Detector.analyze(image, options: DetectorOptions(timeout: 60))
     }
 
+    /// When a scene's checks fail, show what Vision read: OCR differs between macOS versions
+    /// and this is the only way to see it on a CI machine.
+    func diagnose(_ scene: String, _ a: Analysis, since before: Int) {
+        guard failed.count > before else { return }
+        print("--- \(scene): what Vision read")
+        for l in a.lines { print("    | \(l)") }
+        for f in a.findings { print("    = \(f.kind.rawValue)\(f.weak ? " (weak)" : ""): \(f.text ?? "")") }
+    }
+
     let sem = DispatchSemaphore(value: 0)
     Task {
         defer { sem.signal() }
         do {
             // A chat-like screenshot at 2x with a mix of data.
             let chat = fixtures.chat(scale: 2)
+            var mark = failed.count
             let a = try await analyze(chat)
             let kinds = Set(a.findings.filter { !$0.weak }.map(\.kind))
             for k in [FindingKind.phone, .card, .passport, .snils, .address, .email, .plate, .track] {
@@ -261,6 +271,7 @@ if CommandLine.arguments.dropFirst().first != "text" {
             }
             check(a.findings.allSatisfy { f in f.rects.allSatisfy { CGRect(origin: .zero, size: a.size).contains($0) } },
                   "chat image: rectangles inside the image")
+            diagnose("chat", a, since: mark)
 
             // After hiding, a second pass must find nothing strong.
             let rects = a.findings.filter(\.enabled).flatMap(\.rects)
@@ -276,6 +287,7 @@ if CommandLine.arguments.dropFirst().first != "text" {
 
             // A whole-screen capture: small text in a big image.
             let screen = fixtures.screen(scale: 2)
+            mark = failed.count
             let s = try await analyze(screen)
             let sk = Set(s.findings.filter { !$0.weak }.map(\.kind))
             for k in [FindingKind.phone, .email, .inn, .person, .birthdate, .address, .secret, .password, .ip] {
@@ -285,6 +297,7 @@ if CommandLine.arguments.dropFirst().first != "text" {
             if let pw = s.findings.first(where: { $0.kind == .password }) {
                 check(pw.bounds.width < 600, "full screen: password box is cut to the password (\(Int(pw.bounds.width)) px)")
             }
+            diagnose("full screen", s, since: mark)
 
             // Dark theme.
             let dark = fixtures.chat(scale: 2, dark: true)

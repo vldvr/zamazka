@@ -184,6 +184,14 @@ public enum Detector {
                 let request = makeTextRequest()
                 try? VNImageRequestHandler(cgImage: crop).perform([request])
                 for extra in ocrLines(request, crop: tile) {
+                    // A line that runs into the tile's inner edge was cut by the crop; another
+                    // tile or the full pass has it whole.
+                    let m = extra.box.height * 0.6
+                    let cut = (tile.minX > 0 && extra.box.minX - tile.minX < m)
+                        || (tile.maxX < size.width && tile.maxX - extra.box.maxX < m)
+                        || (tile.minY > 0 && extra.box.minY - tile.minY < m * 0.5)
+                        || (tile.maxY < size.height && tile.maxY - extra.box.maxY < m * 0.5)
+                    if cut { continue }
                     let covered = lines.contains { line in
                         let i = line.box.intersection(extra.box)
                         return !i.isNull && i.width * i.height > extra.box.width * extra.box.height * 0.3
@@ -292,12 +300,17 @@ public enum Detector {
     static func blocks(of sorted: [OCRLine]) -> [[OCRLine]] {
         var blocks: [[OCRLine]] = []
         var used = Set<Int>()
+        // A line with its own caption to the left is a form field, never a wrapped continuation.
+        // Without this a column of values (name, phone, e-mail…) can read as one paragraph when
+        // the rows are dense, and each value loses its caption.
+        let captioned = Set(sorted.indices.filter { i in sorted.contains { other in isCaption(other, of: sorted[i]) } })
         for i in sorted.indices where !used.contains(i) {
             var block = [sorted[i]]
             used.insert(i)
             var last = sorted[i]
+            var lastIndex = i
             while let j = sorted.indices.first(where: { j in
-                guard !used.contains(j) else { return false }
+                guard !used.contains(j), !captioned.contains(j), !captioned.contains(lastIndex) else { return false }
                 let next = sorted[j], h = last.box.height
                 let gap = next.box.minY - last.box.maxY
                 // Wrapped lines sit closer than form rows (line spacing is ~1.2 of the font).
@@ -305,6 +318,7 @@ public enum Detector {
                     && abs(next.box.minX - last.box.minX) < h * 1.2
                     && abs(next.box.height - h) < h * 0.35
             }) {
+                lastIndex = j
                 block.append(sorted[j])
                 used.insert(j)
                 last = sorted[j]
@@ -312,6 +326,14 @@ public enum Detector {
             blocks.append(block)
         }
         return blocks
+    }
+
+    /// `other` sits to the left of `line` on the same row, close enough to be its caption.
+    static func isCaption(_ other: OCRLine, of line: OCRLine) -> Bool {
+        let b = line.box
+        guard other.box.maxX <= b.minX + 2, b.minX - other.box.maxX < b.height * 12 else { return false }
+        let overlap = min(other.box.maxY, b.maxY) - max(other.box.minY, b.minY)
+        return overlap > min(other.box.height, b.height) * 0.5
     }
 
     struct Context {
