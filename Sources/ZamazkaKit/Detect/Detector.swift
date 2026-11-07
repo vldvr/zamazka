@@ -332,16 +332,20 @@ public enum Detector {
     }
 
     /// `other` sits to the left of `line` on the same row, close enough to be its caption.
-    static func isCaption(_ other: OCRLine, of line: OCRLine) -> Bool {
-        isLeft(other, of: line) && line.box.minX - other.box.maxX < line.box.height * 12
+    static func isCaption(_ other: OCRLine, of line: OCRLine) -> Bool { isCaption(other.box, of: line.box) }
+    static func isLeft(_ other: OCRLine, of line: OCRLine) -> Bool { isLeft(other.box, of: line.box) }
+
+    /// Box `a` is close enough to the left of `b` to be its caption. Distances are measured in
+    /// line heights with a floor: older Vision sometimes returns boxes only as tall as the
+    /// lower-case letters (12 px for 13-pt text at 2×).
+    static func isCaption(_ a: CGRect, of b: CGRect) -> Bool {
+        isLeft(a, of: b) && b.minX - a.maxX < max(a.height, b.height, 20) * 12
     }
 
-    /// `other` is on the same row and to the left. Centres are compared rather than overlap, and
-    /// a little horizontal overlap is allowed: older Vision returns looser boxes, especially for
-    /// misread words.
-    static func isLeft(_ other: OCRLine, of line: OCRLine) -> Bool {
-        let a = other.box, b = line.box
-        guard a.minX < b.minX, a.maxX <= b.minX + b.height * 0.8 else { return false }
+    /// Box `a` is on the same row and to the left of `b`. Centres are compared rather than
+    /// overlap, and a little horizontal overlap is allowed for looser boxes of misread words.
+    static func isLeft(_ a: CGRect, of b: CGRect) -> Bool {
+        guard a.minX < b.minX, a.maxX <= b.minX + max(b.height, 12) * 0.8 else { return false }
         return abs(a.midY - b.midY) < max(a.height, b.height) * 0.6
     }
 
@@ -368,7 +372,7 @@ public enum Detector {
             !inBlock.contains(ObjectIdentifier(other.candidate)) && isLeft(other, of: block[0])
         }.sorted { $0.box.maxX < $1.box.maxX }
         ctx.left = left.map(\.text).joined(separator: " ")
-        if let nearest = left.last, b.minX - nearest.box.maxX < b.height * 12 {
+        if let nearest = left.last, isCaption(nearest.box, of: b) {
             ctx.label = nearest.text
         } else if let above, above.text.count <= 40, abs(above.box.minX - b.minX) < b.height * 1.5 {
             ctx.label = above.text

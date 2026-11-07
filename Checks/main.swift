@@ -168,6 +168,17 @@ check(scanner.scan("125009, Москва, Тверская улица, 7", label
 check(scanner.scan("Активен", label: "Статус:").isEmpty && scanner.scan("01.02.2026", label: "Создан:").isEmpty, "field: unrelated captions stay unrelated")
 check(Validators.editDistance("лата рожления", "дата рождения") == 2, "edit distance")
 
+// Caption geometry, with boxes exactly as Vision returned them on macOS 15 (CI): the e-mail
+// row came back only 12 px tall, so a limit in line heights alone missed its caption.
+check(Detector.isCaption(CGRect(x: 167, y: 415, width: 93, height: 12), of: CGRect(x: 453, y: 415, width: 254, height: 12)),
+      "caption: «Почта:» 193 px left of a 12-px-tall value")
+check(Detector.isCaption(CGRect(x: 167, y: 546, width: 211, height: 18), of: CGRect(x: 459, y: 538, width: 137, height: 33)),
+      "caption: «Дата рождения:» with boxes of different heights")
+check(!Detector.isCaption(CGRect(x: 173, y: 347, width: 117, height: 12), of: CGRect(x: 453, y: 415, width: 254, height: 12)),
+      "caption: the row above is not a caption")
+check(!Detector.isCaption(CGRect(x: 167, y: 415, width: 93, height: 12), of: CGRect(x: 1551, y: 415, width: 300, height: 12)),
+      "caption: a far-away window is not a caption")
+
 // Wrapped over two lines (scanned as one paragraph).
 expect("кв. 12. Мой номер +7 (916) 123-45-67, звони после шести", .phone, "+7 (916) 123-45-67")
 
