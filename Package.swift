@@ -4,6 +4,10 @@ import PackageDescription
 let package = Package(
     name: "Zamazka",
     platforms: [.macOS(.v14)],
+    products: [
+        // The detector for Redakciya (~/Projects_and_tools/redakciya): Detector, TextScanner, FindingKind.
+        .library(name: "ZamazkaKit", targets: ["ZamazkaKit"]),
+    ],
     targets: [
         .executableTarget(
             name: "Zamazka",
