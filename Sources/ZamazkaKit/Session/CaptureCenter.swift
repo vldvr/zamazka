@@ -40,7 +40,11 @@ final class CaptureCenter: ObservableObject {
 
     // MARK: - Sources
 
+    private(set) var started = false
+
     func start() {
+        guard !started else { return }
+        started = true
         try? FileManager.default.removeItem(at: Self.cacheFolder)
         clipboard.allowFileItems = { [weak self] in
             guard let t = self?.lastCleanShotCapture else { return false }
@@ -68,7 +72,20 @@ final class CaptureCenter: ObservableObject {
         timers.append(t)
     }
 
+    /// Stops every source, for a host app that hands screenshots back to a standalone Zamazka.
+    func stop() {
+        guard started else { return }
+        started = false
+        folders.stop()
+        spotlight.stop()
+        clipboard.stop()
+        timers.forEach { $0.invalidate() }
+        timers.removeAll()
+        bag.removeAll()
+    }
+
     func refreshSources() {
+        guard started else { return }
         if prefs.watchFiles {
             var list = [ScreenshotPlaces.systemFolder, ScreenshotPlaces.desktop]
             list += prefs.learnedFolders.map { URL(fileURLWithPath: $0, isDirectory: true) }

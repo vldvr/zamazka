@@ -12,12 +12,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var blink: Timer?
 
     var buttonFrame: CGRect? {
-        guard let button = item?.button, let window = button.window else { return nil }
+        guard let button = item?.button, let window = button.window else { return ZamazkaEmbedded.anchorFrame() }
         let f = window.convertToScreen(button.convert(button.bounds, to: nil))
         return f.width > 0 ? f : nil
     }
 
-    var buttonScreen: NSScreen? { item?.button?.window?.screen }
+    var buttonScreen: NSScreen? { item?.button?.window?.screen ?? ZamazkaEmbedded.anchorScreen() }
 
     func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -71,6 +71,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        addItems(to: menu, embedded: false)
+    }
+
+    /// The menu of Zamazka. Embedded in another app, it has no Settings and Quit of its own.
+    func addItems(to menu: NSMenu, embedded: Bool) {
         let prefs = Prefs.shared
         let center = CaptureCenter.shared
 
@@ -105,6 +110,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(action("Снять с паузы", #selector(resume)))
         } else {
             menu.addItem(action("Пауза на час", #selector(pause)))
+        }
+        if embedded {
+            menu.addItem(action("Настройки Замазки…", #selector(openSettings)))
+            return
         }
         menu.addItem(.separator())
         menu.addItem(action("Настройки…", #selector(openSettings), key: ","))

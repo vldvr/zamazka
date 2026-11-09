@@ -94,8 +94,11 @@ struct SettingsView: View {
                 Text("Оригинал после «Скрыть» лежит только в памяти, на диск Замазка его не пишет. Когда время выйдет или программа закроется, вернуть его будет нельзя. Пока не нажато «Скрыть», оригинал остаётся там, где его сохранил macOS или CleanShot.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Запуск") {
-                Toggle("Открывать при входе в систему", isOn: Binding(get: { prefs.launchAtLogin }, set: { prefs.launchAtLogin = $0 }))
+            // Inside another app the login item is that app's, and it has its own switch.
+            if !ZamazkaEmbedded.isEmbedded {
+                Section("Запуск") {
+                    Toggle("Открывать при входе в систему", isOn: Binding(get: { prefs.launchAtLogin }, set: { prefs.launchAtLogin = $0 }))
+                }
             }
         }
         .formStyle(.grouped)
